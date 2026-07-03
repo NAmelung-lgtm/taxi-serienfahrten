@@ -21,6 +21,9 @@ type Fahrt = {
   nach_adresse: string | null;
   unterschrift: string | null;
   created_at: string;
+  archiviert: boolean | null;
+  archiviert_am: string | null;
+  pdf_name: string | null;
 };
 
 function AdminApp() {
@@ -29,6 +32,8 @@ function AdminApp() {
   const [kunde, setKunde] = useState<Kunde | null>(null);
   const [suche, setSuche] = useState("");
   const [meldung, setMeldung] = useState("");
+  const [excelLaedt, setExcelLaedt] = useState(false);
+  const [zeigeArchiv, setZeigeArchiv] = useState(false);
 
   useEffect(() => {
     ladeKunden();
@@ -40,22 +45,27 @@ function AdminApp() {
     else setKunden(data ?? []);
   }
 
-  async function ladeFahrten(k: Kunde) {
+  async function ladeFahrten(k: Kunde, archiv = zeigeArchiv) {
     setKunde(k);
+
     const { data, error } = await supabase
       .from("fahrten")
       .select("*")
       .eq("kunde_id", k.id)
+      .eq("archiviert", archiv)
       .order("created_at", { ascending: false });
 
     if (error) setMeldung(error.message);
     else setFahrten(data ?? []);
   }
 
+  async function modusWechseln(archiv: boolean) {
+    setZeigeArchiv(archiv);
+    if (kunde) await ladeFahrten(kunde, archiv);
+  }
+
   function updateFahrt(id: string, feld: keyof Fahrt, wert: any) {
-    setFahrten((alt) =>
-      alt.map((f) => (f.id === id ? { ...f, [feld]: wert } : f))
-    );
+    setFahrten((alt) => alt.map((f) => (f.id === id ? { ...f, [feld]: wert } : f)));
   }
 
   async function speichern(f: Fahrt) {
@@ -87,11 +97,68 @@ function AdminApp() {
 
     const { error } = await supabase.from("fahrten").delete().eq("id", id);
 
-    if (error) setMeldung("Fehler: " + error.message);
-    else {
+    if (error) {
+      setMeldung("Fehler: " + error.message);
+    } else {
       setMeldung("✅ Fahrt gelöscht");
       if (kunde) ladeFahrten(kunde);
     }
+  }
+
+  async function wiederOeffnen(id: string) {
+    const { error } = await supabase
+      .from("fahrten")
+      .update({
+        archiviert: false,
+        archiviert_am: null,
+        pdf_name: null,
+      })
+      .eq("id", id);
+
+    if (error) {
+      setMeldung("Fehler: " + error.message);
+    } else {
+      setMeldung("✅ Fahrt wieder geöffnet");
+      if (kunde) ladeFahrten(kunde, true);
+    }
+  }
+
+  async function excelErzeugen() {
+    if (!kunde) return;
+
+    if (!confirm("Excel erzeugen und offene Fahrten archivieren?")) return;
+
+    setExcelLaedt(true);
+    setMeldung("");
+
+    const res = await fetch("/api/excel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kundeId: kunde.id }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setMeldung("Fehler: " + (data?.error || "Excel konnte nicht erzeugt werden"));
+      setExcelLaedt(false);
+      return;
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `fahrtenzettel-${kunde.name}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+
+    setMeldung("✅ Excel erzeugt und Fahrten archiviert");
+    setExcelLaedt(false);
+    ladeFahrten(kunde, false);
   }
 
   const gefilterteKunden = kunden.filter((k) =>
@@ -102,25 +169,48 @@ function AdminApp() {
     return (
       <main style={s.main}>
         <p>
-          <button onClick={() => setKunde(null)} style={s.linkButton}>
-            ← Kundenliste
-          </button>{" "}
+          <button onClick={() => setKunde(null)} style={s.linkButton}>← Kundenliste</button>{" "}
           | <a href="/">Fahrer-App</a> | <a href="/kunden">Kundenverwaltung</a>
         </p>
 
         <h1>{kunde.name}</h1>
         <p>{kunde.adresse}</p>
 
+        <button onClick={() => modusWechseln(false)} style={!zeigeArchiv ? s.activeTab : s.tab}>
+          Offene Fahrten
+        </button>
+        <button onClick={() => modusWechseln(true)} style={zeigeArchiv ? s.activeTab : s.tab}>
+          Archiv
+        </button>
+
+        {!zeigeArchiv && (
+          <button
+            onClick={excelErzeugen}
+            disabled={excelLaedt || fahrten.length === 0}
+            style={s.excelButton}
+          >
+            {excelLaedt ? "Excel wird erzeugt..." : "Daten als Excel erzeugen"}
+          </button>
+        )}
+
         {meldung && <p>{meldung}</p>}
 
         {fahrten.map((f) => (
           <div key={f.id} style={s.card}>
+            {zeigeArchiv && (
+              <p>
+                <strong>Archiviert:</strong> {f.archiviert_am || "-"}<br />
+                <strong>Datei:</strong> {f.pdf_name || "-"}
+              </p>
+            )}
+
             <label>Datum</label>
             <input
               type="date"
               value={f.fahrtdatum ?? ""}
               onChange={(e) => updateFahrt(f.id, "fahrtdatum", e.target.value)}
               style={s.input}
+              disabled={zeigeArchiv}
             />
 
             {!f.fahrtdatum && <strong>Datum offen / zukünftige Fahrt</strong>}
@@ -130,6 +220,7 @@ function AdminApp() {
                 type="checkbox"
                 checked={!!f.hinfahrt}
                 onChange={(e) => updateFahrt(f.id, "hinfahrt", e.target.checked)}
+                disabled={zeigeArchiv}
               />
               Hinfahrt
             </label>
@@ -139,6 +230,7 @@ function AdminApp() {
                 type="checkbox"
                 checked={!!f.rueckfahrt}
                 onChange={(e) => updateFahrt(f.id, "rueckfahrt", e.target.checked)}
+                disabled={zeigeArchiv}
               />
               Rückfahrt
             </label>
@@ -148,6 +240,7 @@ function AdminApp() {
               value={f.von_adresse ?? ""}
               onChange={(e) => updateFahrt(f.id, "von_adresse", e.target.value)}
               style={s.input}
+              disabled={zeigeArchiv}
             />
 
             <label>Nach</label>
@@ -155,34 +248,36 @@ function AdminApp() {
               value={f.nach_adresse ?? ""}
               onChange={(e) => updateFahrt(f.id, "nach_adresse", e.target.value)}
               style={s.input}
+              disabled={zeigeArchiv}
             />
 
             {f.unterschrift && (
               <img src={f.unterschrift} alt="Unterschrift" style={s.signature} />
             )}
 
-            <div>
-              <button onClick={() => speichern(f)} style={s.save}>
-                Speichern
+            {!zeigeArchiv ? (
+              <div>
+                <button onClick={() => speichern(f)} style={s.save}>Speichern</button>
+                <button onClick={() => loeschen(f.id)} style={s.delete}>Löschen</button>
+              </div>
+            ) : (
+              <button onClick={() => wiederOeffnen(f.id)} style={s.save}>
+                Wieder öffnen
               </button>
-              <button onClick={() => loeschen(f.id)} style={s.delete}>
-                Löschen
-              </button>
-            </div>
+            )}
           </div>
         ))}
 
-        {fahrten.length === 0 && <p>Keine Fahrten für diesen Kunden.</p>}
+        {fahrten.length === 0 && (
+          <p>{zeigeArchiv ? "Keine archivierten Fahrten." : "Keine offenen Fahrten für diesen Kunden."}</p>
+        )}
       </main>
     );
   }
 
   return (
     <main style={s.main}>
-      <p>
-        <a href="/">Fahrer-App</a> | <a href="/kunden">Kundenverwaltung</a>
-      </p>
-
+      <p><a href="/">Fahrer-App</a> | <a href="/kunden">Kundenverwaltung</a></p>
       <h1>Admin: Kunden</h1>
 
       <input
@@ -193,7 +288,7 @@ function AdminApp() {
       />
 
       {gefilterteKunden.map((k) => (
-        <button key={k.id} onClick={() => ladeFahrten(k)} style={s.customer}>
+        <button key={k.id} onClick={() => ladeFahrten(k, false)} style={s.customer}>
           <strong>{k.name}</strong>
           <p>{k.adresse}</p>
           <small>{k.krankenkasse}</small>
@@ -220,5 +315,8 @@ const s: Record<string, React.CSSProperties> = {
   signature: { width: 260, maxWidth: "100%", display: "block", border: "1px solid #ccc", background: "white", margin: "12px 0" },
   save: { padding: 12, background: "black", color: "white", border: "none", borderRadius: 8, marginRight: 8 },
   delete: { padding: 12, background: "#b00020", color: "white", border: "none", borderRadius: 8 },
+  excelButton: { display: "block", padding: 16, background: "#004aad", color: "white", border: "none", borderRadius: 8, margin: "14px 0 20px 0", fontSize: 16 },
   linkButton: { background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 16 },
+  tab: { padding: 12, marginRight: 8, border: "1px solid #ccc", borderRadius: 8, background: "white" },
+  activeTab: { padding: 12, marginRight: 8, border: "none", borderRadius: 8, background: "black", color: "white" },
 };

@@ -23,7 +23,6 @@ function dateText(value: any) {
 
   return `${tag}.${monat}.${jahr}`;
 }
-}
 
 function safeFileName(value: string) {
   return value.replace(/[^a-z0-9äöüß\- ]/gi, "").replaceAll(" ", "-");

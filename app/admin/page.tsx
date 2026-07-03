@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import PasswortSchutz from "../../components/PasswortSchutz";
 import { supabase } from "../../lib/supabase";
 
 type Kunde = {
@@ -22,7 +23,7 @@ type Fahrt = {
   created_at: string;
 };
 
-export default function AdminPage() {
+function AdminApp() {
   const [kunden, setKunden] = useState<Kunde[]>([]);
   const [fahrten, setFahrten] = useState<Fahrt[]>([]);
   const [kunde, setKunde] = useState<Kunde | null>(null);
@@ -101,7 +102,9 @@ export default function AdminPage() {
     return (
       <main style={s.main}>
         <p>
-          <button onClick={() => setKunde(null)} style={s.linkButton}>← Kundenliste</button>{" "}
+          <button onClick={() => setKunde(null)} style={s.linkButton}>
+            ← Kundenliste
+          </button>{" "}
           | <a href="/">Fahrer-App</a> | <a href="/kunden">Kundenverwaltung</a>
         </p>
 
@@ -159,8 +162,12 @@ export default function AdminPage() {
             )}
 
             <div>
-              <button onClick={() => speichern(f)} style={s.save}>Speichern</button>
-              <button onClick={() => loeschen(f.id)} style={s.delete}>Löschen</button>
+              <button onClick={() => speichern(f)} style={s.save}>
+                Speichern
+              </button>
+              <button onClick={() => loeschen(f.id)} style={s.delete}>
+                Löschen
+              </button>
             </div>
           </div>
         ))}
@@ -193,6 +200,14 @@ export default function AdminPage() {
         </button>
       ))}
     </main>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <PasswortSchutz bereich="buero">
+      <AdminApp />
+    </PasswortSchutz>
   );
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import PasswortSchutz from "../../components/PasswortSchutz";
 import { supabase } from "../../lib/supabase";
 
 type Kunde = {
@@ -32,7 +33,7 @@ const leererKunde: Partial<Kunde> = {
   zielort: "",
 };
 
-export default function KundenPage() {
+function KundenApp() {
   const [kunden, setKunden] = useState<Kunde[]>([]);
   const [formular, setFormular] = useState<Partial<Kunde>>(leererKunde);
   const [bearbeitenId, setBearbeitenId] = useState<string | null>(null);
@@ -193,6 +194,14 @@ export default function KundenPage() {
         </div>
       ))}
     </main>
+  );
+}
+
+export default function KundenPage() {
+  return (
+    <PasswortSchutz bereich="buero">
+      <KundenApp />
+    </PasswortSchutz>
   );
 }
 

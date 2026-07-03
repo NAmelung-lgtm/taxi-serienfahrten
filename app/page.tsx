@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import PasswortSchutz from "../components/PasswortSchutz";
 import { supabase } from "../lib/supabase";
 
 type Kunde = {
@@ -12,7 +13,7 @@ type Kunde = {
   zielort: string | null;
 };
 
-export default function Home() {
+function FahrerApp() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [zeichnen, setZeichnen] = useState(false);
   const [kunden, setKunden] = useState<Kunde[]>([]);
@@ -226,6 +227,14 @@ export default function Home() {
         </button>
       ))}
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <PasswortSchutz bereich="fahrer">
+      <FahrerApp />
+    </PasswortSchutz>
   );
 }
 
